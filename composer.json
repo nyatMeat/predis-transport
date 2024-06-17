@@ -1,0 +1,34 @@
+{
+    "name": "symfony/predis-messenger",
+    "type": "symfony-messenger-bridge",
+    "description": "Symfony Redis extension Messenger Bridge use Predis library",
+    "keywords": [],
+    "homepage": "https://symfony.com",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Kaluzhskii Aleksandr",
+            "email": "nyatmeat@gmail.com"
+        },
+        {
+            "name": "Symfony Community",
+            "homepage": "https://symfony.com/contributors"
+        }
+    ],
+    "require": {
+        "php": ">=8.2",
+        "symfony/messenger": "^6.4|^7.0",
+        "predis/predis": "^2"
+    },
+    "require-dev": {
+        "symfony/property-access": "^6.4|^7.0",
+        "symfony/serializer": "^6.4|^7.0"
+    },
+    "autoload": {
+        "psr-4": { "Symfony\\Component\\Messenger\\Bridge\\Redis\\": "" },
+        "exclude-from-classmap": [
+            "/Tests/"
+        ]
+    },
+    "minimum-stability": "dev"
+}
