@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace Symfony\Component\Messenger\Bridge\Redis\PredisTransport;
+namespace Symfony\Component\Messenger\Bridge\Predis\Transport;
 
 use Symfony\Component\Messenger\Stamp\NonSendableStampInterface;
 
