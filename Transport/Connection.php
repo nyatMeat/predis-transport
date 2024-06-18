@@ -37,7 +37,6 @@ class Connection
         'sentinel_master' => null, // String, master to look for (optional, default is NULL meaning Sentinel support is disabled)
         'timeout' => 0.0, // Float, value in seconds (optional, default is 0 meaning unlimited)
         'read_timeout' => 0.0, //  Float, value in seconds (optional, default is 0 meaning unlimited)
-        'ssl' => null, // see https://php.net/context.ssl
         'sentinel_timeout' => 0, // Sentinel connection timeout,
         'update_sentinels' => false, // Is need update sentinels
         'sentinel_retry_limit' => 20,
@@ -165,7 +164,6 @@ class Connection
         }
 
         $url = \str_replace(
-
             'predis' . ':',
             'file:',
             $dsn
