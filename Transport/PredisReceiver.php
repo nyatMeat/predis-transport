@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Symfony\Component\Messenger\Bridge\Predis\Transport;
 
-use Symfony\Component\Messenger\Bridge\Redis\Transport\Connection;
 use Symfony\Component\Messenger\Bridge\Redis\Transport\RedisReceivedStamp;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\LogicException;

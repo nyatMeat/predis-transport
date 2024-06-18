@@ -2,8 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Symfony\Component\Messenger\Bridge\Predis\Transport;
+namespace Fraud\Components\Messenger\Transport;
 
+use Fraud\Components\Messenger\Transport\Predis\UNLINK;
+use Fraud\Components\Messenger\Transport\Predis\XACK;
+use Fraud\Components\Messenger\Transport\Predis\XCLAIM;
+use Fraud\Components\Messenger\Transport\Predis\XGROUP;
+use Fraud\Components\Messenger\Transport\Predis\XINFO;
+use Fraud\Components\Messenger\Transport\Predis\XPENDING;
+use Fraud\Components\Messenger\Transport\Predis\XREADGROUP;
 use Predis\Client;
 use Predis\ClientException;
 use Predis\PredisException;
@@ -14,8 +21,7 @@ use Symfony\Component\Messenger\Exception\TransportException;
 class Connection
 {
     private const DEFAULT_OPTIONS = [
-        'host' => '127.0.0.1',
-        'port' => 6379,
+        'dsn_list' => '127.0.0.1:6379',
         'stream' => 'messages',
         'group' => 'symfony',
         'consumer' => 'consumer',
@@ -23,16 +29,14 @@ class Connection
         'delete_after_ack' => true,
         'delete_after_reject' => true,
         'stream_max_entries' => 0, // any value higher than 0 defines an approximate maximum number of stream entries
-        'dbindex' => 0,
+        'db_index' => 0,
         'redeliver_timeout' => 3600, // Timeout before redeliver messages still in pending state (seconds)
         'claim_interval' => 60000, // Interval by which pending/abandoned messages should be checked
-        'auth' => null,
-        'serializer' => 1, // see \Redis::SERIALIZER_PHP,
+        'username' => null,
+        'password' => null,
         'sentinel_master' => null, // String, master to look for (optional, default is NULL meaning Sentinel support is disabled)
         'timeout' => 0.0, // Float, value in seconds (optional, default is 0 meaning unlimited)
         'read_timeout' => 0.0, //  Float, value in seconds (optional, default is 0 meaning unlimited)
-        'retry_interval' => 0, //  Int, value in milliseconds (optional, default is 0)
-        'persistent_id' => null, // String, persistent connection id (optional, default is NULL meaning not persistent)
         'ssl' => null, // see https://php.net/context.ssl
         'sentinel_timeout' => 0, // Sentinel connection timeout,
         'update_sentinels' => false, // Is need update sentinels
@@ -66,9 +70,11 @@ class Connection
 
     private bool $couldHavePendingMessages = true;
 
-    public function __construct(array $options, ?Client $redis = null)
+    public function __construct(array $options)
     {
         $options += self::DEFAULT_OPTIONS;
+
+        $this->redis = $this->initiateRedisFromOption($options);
 
         foreach (['stream', 'group', 'consumer'] as $key) {
             if ('' === $options[$key]) {
@@ -80,18 +86,120 @@ class Connection
         $this->group = $options['group'];
         $this->consumer = $options['consumer'];
         $this->queue = $this->stream . '__queue';
-        $this->autoSetup = $options['auto_setup'];
-        $this->maxEntries = $options['stream_max_entries'];
-        $this->deleteAfterAck = $options['delete_after_ack'];
-        $this->deleteAfterReject = $options['delete_after_reject'];
+        $this->autoSetup = (bool) $options['auto_setup'];
+        $this->maxEntries = (int) $options['stream_max_entries'];
+        $this->deleteAfterAck = (bool) $options['delete_after_ack'];
+        $this->deleteAfterReject = (bool) $options['delete_after_reject'];
         $this->redeliverTimeout = $options['redeliver_timeout'] * 1000;
         $this->claimInterval = $options['claim_interval'] / 1000;
+    }
+
+    private function initiateRedisFromOption(array $options): Client
+    {
+        $clientOptions = [];
+
+        $hosts = explode(',', $options['dsn_list']);
+
+        if (!$hosts) {
+            throw new InvalidArgumentException('Host list is empty');
+        }
+
+        $isSentinelConnection = $options['sentinel_master'];
+
+        if (count($hosts) === 1) {
+            $clientParameters = $hosts[0];
+        } else {
+            if ($isSentinelConnection) {
+                $clientOptions['replication'] = 'sentinel';
+                $clientOptions['service'] = $options['sentinel_master'];
+            } else {
+                $clientOptions['cluster'] = 'redis';
+            }
+
+            $clientParameters = $hosts;
+        }
+
+        if ($options['username']) {
+            $clientOptions['parameters']['username'] = $options['username'];
+        }
+
+        if ($options['password']) {
+            $clientOptions['parameters']['password'] = $options['password'];
+        }
+
+        $clientOptions['parameters']['timeout'] = (float) $options['timeout'];
+        $clientOptions['parameters']['read_write_timeout'] = (float) $options['read_timeout'];
+        $clientOptions['parameters']['database'] = (int) $options['db_index'];
+
+        $clientOptions['throw_errors'] = true;
+
+        $clientOptions['commands'] = [
+            'XGROUP' => XGROUP::class,
+            'UNLINK' => UNLINK::class,
+            'XACK' => XACK::class,
+            'XCLAIM' => XCLAIM::class,
+            'XINFO' => XINFO::class,
+            'XREADGROUP' => XREADGROUP::class,
+            'XPENDING' => XPENDING::class,
+        ];
+
+        $client = new Client($clientParameters, $clientOptions);
+
+        if ($isSentinelConnection) {
+            $client->getConnection()->setRetryLimit((int) $options['sentinel_retry_limit']);
+            $client->getConnection()->setUpdateSentinels((bool) $options['update_sentinels']);
+            $client->getConnection()->setSentinelTimeout((float) $options['sentinel_timeout']);
+        }
+
+        return $client;
+    }
+
+    public static function fromDsn(string $dsn): self
+    {
+        $options = [];
+
+        $validScheme = \str_starts_with($dsn, 'predis:');
+
+        if (!$validScheme) {
+            throw new InvalidArgumentException('Invalid dsn scheme type. Expected predis');
+        }
+
+        $url = \str_replace(
+
+            'predis' . ':',
+            'file:',
+            $dsn
+        );
+
+        if (false === $params = parse_url($url)) {
+            throw new InvalidArgumentException('The given Predis DSN is invalid.');
+        }
+
+        if (isset($params['query'])) {
+            parse_str($params['query'], $options);
+
+            if (isset($options['username'])) {
+                $options['username'] = rawurldecode($options['username']);
+            }
+
+            if (isset($options['password'])) {
+                $options['password'] = rawurldecode($options['password']);
+            }
+        }
+
+        $options['dsn_list'] = $params['host'] . ':' . $params['port'];
+
+        return new self($options);
     }
 
     private function claimOldPendingMessages(): void
     {
         try {
-            $pendingMessages = $this->redis->executeCommand($this->redis->createCommand('xpending', [$this->stream, $this->group, '-', '+', 1])) ?: [];
+            $command = $this->redis->createCommand('XPENDING', [$this->stream, $this->group, '-', '+', '1']);
+
+            $commandResult = $this->redis->executeCommand($command);
+
+            $pendingMessages = $commandResult ?: [];
         } catch (PredisException $e) {
             throw new TransportException($e->getMessage(), 0, $e);
         }
@@ -114,13 +222,13 @@ class Connection
             try {
                 $this->redis->executeCommand(
                     $this->redis->createCommand(
-                        'xclaim',
+                        'XCLAIM',
                         [
                             $this->stream,
                             $this->group,
                             $this->consumer,
                             $this->redeliverTimeout,
-                            $claimableIds,
+                            ...$claimableIds,
                             'JUSTID',
                         ],
                     )
@@ -144,20 +252,23 @@ class Connection
         $now = microtime();
         $now = substr($now, 11) . substr($now, 2, 3);
 
-        $queuedMessageCount = $this->redis->zcount($this->queue, 0, $now) ?? 0;
+        $queuedMessageCount = (int) ($this->redis->zcount($this->queue, 0, $now) ?? 0);
 
         while ($queuedMessageCount--) {
             if (!$message = $this->redis->zpopmin($this->queue, 1)) {
                 break;
             }
 
-            [$queuedMessage, $expiry] = $message;
+            $queuedMessage = array_key_first($message);
+            $expiry = $message[$queuedMessage];
 
             if (\strlen($expiry) === \strlen($now) ? $expiry > $now : \strlen($expiry) < \strlen($now)) {
                 // if a future-placed message is popped because of a race condition with
                 // another running consumer, the message is readded to the queue
 
-                if (!$this->redis->zadd($this->queue, 'NX', $expiry, $queuedMessage)) {
+                $command = $this->redis->createCommand('ZADD', [$this->queue, 'NX', $expiry, $queuedMessage]);
+
+                if (!$this->redis->executeCommand($command)) {
                     throw new TransportException('Could not add a message to the redis stream.');
                 }
 
@@ -179,18 +290,27 @@ class Connection
         }
 
         try {
-            $messages = $this->redis->executeCommand(
-                $this->redis->createCommand(
-                    'xreadgroup',
-                    [
-                        $this->group,
-                        $this->consumer,
-                        [$this->stream => $messageId],
-                        1,
-                        1,
-                    ],
-                )
+            $command = $this->redis->createCommand(
+                'XREADGROUP',
+                [
+                    'GROUP',
+                    $this->group,
+                    $this->consumer,
+                    'COUNT',
+                    1,
+                    'BLOCK',
+                    1,
+                    'STREAMS',
+                    $this->stream,
+                    $messageId,
+                ],
             );
+
+            $messages = $this->redis->executeCommand($command);
+
+            if (is_array($messages)) {
+                $messages = $this->reformatMessages($messages);
+            }
         } catch (PredisException $e) {
             throw new TransportException($e->getMessage(), 0, $e);
         }
@@ -216,12 +336,27 @@ class Connection
         return null;
     }
 
+    private function reformatMessages(array $messages): array
+    {
+        $result = [];
+
+        foreach ($messages as $message) {
+            if (empty($message[1])) {
+                continue;
+            }
+
+            $result[$message[0]][$message[1][0][0]] = [$message[1][0][1][0] => $message[1][0][1][1]];
+        }
+
+        return $result;
+    }
+
     public function ack(string $id): void
     {
         try {
             $acknowledged = $this->redis->executeCommand(
                 $this->redis->createCommand(
-                    'xack',
+                    'XACK',
                     [
                         $this->stream,
                         $this->group,
@@ -247,7 +382,7 @@ class Connection
         try {
             $deleted = $this->redis->executeCommand(
                 $this->redis->createCommand(
-                    'xack',
+                    'XACK',
                     [
                         $this->stream,
                         $this->group,
@@ -290,17 +425,18 @@ class Connection
                 }
 
                 $now = explode(' ', microtime(), 2);
-                $now[0] = str_pad($delayInMs + substr($now[0], 2, 3), 3, '0', \STR_PAD_LEFT);
+                $now[0] = str_pad((string) ($delayInMs + (int) substr($now[0], 2, 3)), 3, '0', \STR_PAD_LEFT);
                 if (3 < \strlen($now[0])) {
-                    $now[1] += substr($now[0], 0, -3);
+                    $now[1] += (int) substr($now[0], 0, -3);
                     $now[0] = substr($now[0], -3);
 
                     if (\is_float($now[1])) {
                         throw new TransportException("Message delay is too big: {$delayInMs}ms.");
                     }
                 }
+                $command = $this->redis->createCommand('ZADD', [$this->queue, 'NX', $now[1] . $now[0], $message]);
 
-                $added = $this->rawCommand('ZADD', 'NX', $now[1] . $now[0], $message);
+                $added = $this->redis->executeCommand($command);
             } else {
                 $message = json_encode([
                     'body' => $body,
@@ -312,9 +448,9 @@ class Connection
                 }
 
                 if ($this->maxEntries) {
-                    $added = $this->redis->xadd($this->stream, '*', ['message' => $message], $this->maxEntries, true);
+                    $added = $this->redis->xadd($this->stream, ['message' => $message], '*', ['limit' => $this->maxEntries, 'trim' => true]);
                 } else {
-                    $added = $this->redis->xadd($this->stream, '*', ['message' => $message]);
+                    $added = $this->redis->xadd($this->stream, ['message' => $message], '*');
                 }
 
                 $id = $added;
@@ -333,15 +469,17 @@ class Connection
     public function setup(): void
     {
         try {
-            $this->redis->executeCommand($this->redis->createCommand('xgroup', ['CREATE', $this->stream, $this->group, 0, 1]));
+            $this->redis->executeCommand($this->redis->createCommand('XGROUP', ['CREATE', $this->stream, $this->group, 0, 'MKSTREAM']));
         } catch (PredisException $e) {
-            throw new TransportException($e->getMessage(), 0, $e);
+            if (!\str_starts_with($e->getMessage(), 'BUSYGROUP')) {
+                throw new TransportException($e->getMessage(), 0, $e);
+            }
         }
 
         if ($this->deleteAfterAck || $this->deleteAfterReject) {
             $groups = $this->redis->executeCommand(
                 $this->redis->createCommand(
-                    'xinfo',
+                    'XINFO',
                     [
                         'GROUPS',
                         $this->stream,
@@ -354,7 +492,12 @@ class Connection
                 // support for Redis extension version 4.x
                 || (\is_string($groups) && substr_count($groups, '"name"'))
             ) {
-                throw new LogicException(sprintf('More than one group exists for stream "%s", delete_after_ack and delete_after_reject cannot be enabled as it risks deleting messages before all groups could consume them.', $this->stream));
+                throw new LogicException(
+                    sprintf(
+                        'More than one group exists for stream "%s", delete_after_ack and delete_after_reject cannot be enabled as it risks deleting messages before all groups could consume them.',
+                        $this->stream
+                    )
+                );
             }
         }
 
@@ -369,7 +512,7 @@ class Connection
             try {
                 $unlink = false !== $this->redis->executeCommand(
                         $this->redis->createCommand(
-                            'unlink',
+                            'UNLINK',
                             [
                                 $this->stream,
                                 $this->queue,
@@ -391,7 +534,9 @@ class Connection
 
     public function getMessageCount(): int
     {
-        $groups = $this->redis->xinfo('GROUPS', $this->stream) ?: [];
+        $command = $this->redis->createCommand('XINFO', ['GROUPS', $this->stream]);
+
+        $groups = $this->redis->executeCommand($command) ?: [];
 
         $lastDeliveredId = null;
 
@@ -428,20 +573,5 @@ class Connection
 
             $lastDeliveredId = preg_replace_callback('#\d+$#', static fn(array $matches) => (int) $matches[0] + 1, array_key_last($range));
         }
-    }
-
-    private function rawCommand(string $command, ...$arguments): mixed
-    {
-        try {
-            $result = $this->redis->rawCommand($this->queue, $command, $this->queue, ...$arguments);
-        } catch (PredisException $e) {
-            throw new TransportException($e->getMessage(), 0, $e);
-        }
-
-        if (false === $result) {
-            throw new TransportException(sprintf('Could not run "%s" on Redis queue.', $command));
-        }
-
-        return $result;
     }
 }
