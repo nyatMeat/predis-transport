@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace Fraud\Components\Messenger\Transport;
+namespace Symfony\Component\Messenger\Bridge\Predis\Transport;
 
-use Fraud\Components\Messenger\Transport\Predis\UNLINK;
-use Fraud\Components\Messenger\Transport\Predis\XACK;
-use Fraud\Components\Messenger\Transport\Predis\XCLAIM;
-use Fraud\Components\Messenger\Transport\Predis\XGROUP;
-use Fraud\Components\Messenger\Transport\Predis\XINFO;
-use Fraud\Components\Messenger\Transport\Predis\XPENDING;
-use Fraud\Components\Messenger\Transport\Predis\XREADGROUP;
 use Predis\Client;
 use Predis\ClientException;
 use Predis\PredisException;
+use Symfony\Component\Messenger\Bridge\Predis\Tests\Transport\Predis\UNLINK;
+use Symfony\Component\Messenger\Bridge\Predis\Tests\Transport\Predis\XACK;
+use Symfony\Component\Messenger\Bridge\Predis\Tests\Transport\Predis\XCLAIM;
+use Symfony\Component\Messenger\Bridge\Predis\Tests\Transport\Predis\XGROUP;
+use Symfony\Component\Messenger\Bridge\Predis\Tests\Transport\Predis\XINFO;
+use Symfony\Component\Messenger\Bridge\Predis\Tests\Transport\Predis\XPENDING;
+use Symfony\Component\Messenger\Bridge\Predis\Tests\Transport\Predis\XREADGROUP;
 use Symfony\Component\Messenger\Exception\InvalidArgumentException;
 use Symfony\Component\Messenger\Exception\LogicException;
 use Symfony\Component\Messenger\Exception\TransportException;
