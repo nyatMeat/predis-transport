@@ -163,11 +163,7 @@ class Connection
             throw new InvalidArgumentException('Invalid dsn scheme type. Expected predis');
         }
 
-        $url = \str_replace(
-            'predis' . ':',
-            'file:',
-            $dsn
-        );
+        $url = \str_replace('predis:', 'file:', $dsn);
 
         if (false === $params = parse_url($url)) {
             throw new InvalidArgumentException('The given Predis DSN is invalid.');
