@@ -7,17 +7,20 @@ namespace Symfony\Component\Messenger\Bridge\Predis\Transport;
 use Predis\Client;
 use Predis\ClientException;
 use Predis\PredisException;
-use Symfony\Component\Messenger\Bridge\Predis\Tests\Transport\Predis\UNLINK;
-use Symfony\Component\Messenger\Bridge\Predis\Tests\Transport\Predis\XACK;
-use Symfony\Component\Messenger\Bridge\Predis\Tests\Transport\Predis\XCLAIM;
-use Symfony\Component\Messenger\Bridge\Predis\Tests\Transport\Predis\XGROUP;
-use Symfony\Component\Messenger\Bridge\Predis\Tests\Transport\Predis\XINFO;
-use Symfony\Component\Messenger\Bridge\Predis\Tests\Transport\Predis\XPENDING;
-use Symfony\Component\Messenger\Bridge\Predis\Tests\Transport\Predis\XREADGROUP;
+use Symfony\Component\Messenger\Bridge\Predis\Transport\Predis\UNLINK;
+use Symfony\Component\Messenger\Bridge\Predis\Transport\Predis\XACK;
+use Symfony\Component\Messenger\Bridge\Predis\Transport\Predis\XCLAIM;
+use Symfony\Component\Messenger\Bridge\Predis\Transport\Predis\XGROUP;
+use Symfony\Component\Messenger\Bridge\Predis\Transport\Predis\XINFO;
+use Symfony\Component\Messenger\Bridge\Predis\Transport\Predis\XPENDING;
+use Symfony\Component\Messenger\Bridge\Predis\Transport\Predis\XREADGROUP;
 use Symfony\Component\Messenger\Exception\InvalidArgumentException;
 use Symfony\Component\Messenger\Exception\LogicException;
 use Symfony\Component\Messenger\Exception\TransportException;
 
+/**
+ * @see
+ */
 class Connection
 {
     private const DEFAULT_OPTIONS = [

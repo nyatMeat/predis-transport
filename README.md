@@ -2,6 +2,7 @@ Redis Messenger
 ===============
 
 Provides Redis integration for Symfony Messenger with predis library.
+Based on https://github.com/predis/predis and https://github.com/symfony/redis-messenger
 
 Resources
 ---------
